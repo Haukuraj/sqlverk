@@ -520,63 +520,68 @@ class DatabaseAPI:
             print(e)
             raise e
         #3.4
-    def delete_sport(conn, username, sport_name, force_delete=False):
+    def delete_sport(self, username: str, sport_name: str, force_delete: bool = False) -> None:
         """
-        Deletes a sport from the database. If force_delete is False, it ensures there are no dependencies.
-        Only users with the role of 'editor' or 'theone' can perform this action.
+        Delete a given sport from the Sports table.
+        
+        Parameters
+        ----------
+        username: str
+            The user attempting to delete a sport row.
+        sport_name: str
+            The name of the sport to delete.
+        force_delete: bool
+            Whether to force the deletion even if there are dependencies.
         """
         try:
-            with conn.cursor() as cur:
-                # Check if the user exists and retrieve their role
-                cur.execute("SELECT role_name FROM Users WHERE username = %s;", (username,))
-                role_result = cur.fetchone()
-                
-                if role_result is None:
-                    print("Username not found.")
-                    return
-                
-                role = role_result[0]
-                
-                # Check user role
-                if role not in ["editor", "theone"]:
-                    print("You do not have permission to delete a sport.")
-                    return
-                
-                # Check if the sport exists
-                cur.execute("SELECT id FROM sports WHERE name = %s;", (sport_name,))
-                sport = cur.fetchone()
-                if not sport:
-                    print("Sport not found.")
-                    return
-                
-                sport_id = sport[0]
-                
-                if not force_delete:
-                    # Check if the sport has dependencies
-                    cur.execute("""
-                        SELECT COUNT(*) FROM events WHERE sport_id = %s
-                        UNION ALL
-                        SELECT COUNT(*) FROM teams WHERE sport_id = %s
-                    """, (sport_id, sport_id))
-                    
-                    dependencies = sum(row[0] for row in cur.fetchall())
-                    if dependencies > 0:
-                        print("Cannot delete sport. It has associated records.")
-                        return
-                else:
-                    # Delete dependent rows first
-                    cur.execute("DELETE FROM events WHERE sport_id = %s;", (sport_id,))
-                    cur.execute("DELETE FROM teams WHERE sport_id = %s;", (sport_id,))
-                
-                # Delete the sport
-                cur.execute("DELETE FROM sports WHERE id = %s;", (sport_id,))
-                conn.commit()
-                print(f"Sport '{sport_name}' deleted successfully.")
+            # Check if the user exists and their role
+            role_query = "SELECT role_name FROM Users WHERE username=%s"
+            role_result = self.connection.execute(role_query, (username,)).fetchone()
+
+            if role_result is None:
+                raise Exception("Username not found")
+
+            role = role_result[0]
+
+            # Check if user has the correct role
+            if role not in ["editor", "theone"]:
+                raise PermissionError("You do not have permission to delete a sport.")
+
+            # Check for dependencies (e.g., results, competitions)
+            dependencies_check_query = """
+                SELECT 1 FROM Results WHERE sport_id = (SELECT id FROM Sports WHERE name=%s)
+                UNION
+                SELECT 1 FROM Competitions WHERE sport_id = (SELECT id FROM Sports WHERE name=%s)
+                """
+            dependencies = self.connection.execute(dependencies_check_query, (sport_name, sport_name)).fetchall()
+
+            # If there are dependencies and force_delete is False, raise an error
+            if dependencies and not force_delete:
+                raise Exception(f"Cannot delete sport '{sport_name}' because it has associated records in other tables.")
+
+            # If force_delete is True or no dependencies are found, delete related records
+            if force_delete:
+                delete_results_query = """
+                    DELETE FROM Results WHERE sport_id = (SELECT id FROM Sports WHERE name=%s)
+                """
+                self.connection.execute(delete_results_query, (sport_name,))
+
+                delete_competitions_query = """
+                    DELETE FROM Competitions WHERE sport_id = (SELECT id FROM Sports WHERE name=%s)
+                """
+                self.connection.execute(delete_competitions_query, (sport_name,))
+
+            # Now delete the sport itself
+            delete_sport_query = "DELETE FROM Sports WHERE name=%s"
+            self.connection.execute(delete_sport_query, (sport_name,))
+            self.connection.commit()
+        
         except Exception as e:
-            conn.rollback()
-            print("Error deleting sport:", e)
+            print(e)
+            raise e
+
     #3.5
-    def create_role_and_user(conn, role_name, username, password):
+    def create_role_and_user(self,conn, role_name, username, password):
         """
         Creates a new role with specific permissions and adds a user with that role.
         """
