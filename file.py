@@ -398,12 +398,13 @@ class DatabaseAPI:
                 RETURNING id
                 """
         try:
-            # Check user role
+            
             role_query = "SELECT role_name FROM Users WHERE username=%s"
             role_result = self.connection.execute(role_query, (username,)).fetchone()
 
+            # Checking if there is a username
             if role_result is None:
-                raise Exception("Username not found")
+                raise Exception("no username found")
 
             role = role_result['role_name']
 
@@ -413,7 +414,7 @@ class DatabaseAPI:
             # Validating date if it is later than 2024
             competition_year = int(held.split("-")[0])
             if competition_year < 2024:
-                raise ValueError("Competitions cannot be held before 2024.")
+                raise ValueError("Competitions have to be held after 2024.")
 
             result = self.connection.execute(query, (place, held)).fetchone()
             self.connection.commit()
