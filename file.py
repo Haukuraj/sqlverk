@@ -152,10 +152,32 @@ class DatabaseAPI:
             The name of the sport
         """
         # TODO: Task 4
-        query = """
-                """
         try:
-            raise NotImplementedError
+            # Check if the user exists and their role
+            role_query = "SELECT role_name FROM Users WHERE username=%s"
+            role_result = self.connection.execute(role_query, (username,)).fetchone()
+
+            if role_result is None:
+                raise Exception("Username not found")
+
+            role = role_result[0]
+
+            # Check if user has the correct role
+            if role not in ["editor", "theone"]:
+                raise PermissionError("You do not have permission to delete a sport.")
+            
+                    # Delete related records from results table first
+            delete_results_query = """
+                DELETE FROM results WHERE sport_id = (
+                    SELECT id FROM sports WHERE name=%s
+                )
+                """
+            self.connection.execute(delete_results_query, (sport,))
+
+            # Perform the deletion
+            delete_query = "DELETE FROM Sports WHERE name=%s"
+            self.connection.execute(delete_query, (sport,))
+            self.connection.commit()
         except Exception as e:
             print(e)
             raise e
@@ -233,24 +255,28 @@ class DatabaseAPI:
             Height of the athlete
         """
         # TODO: Task 2 (SQL Query)
+        query = """
+            INSERT INTO Athletes (name, height, gender)
+            VALUES (%s, %s, %s)
+                """
         try:
-            role_query="SELECT role_name FROM Users WHERE username=%s"
-            role_result=self.connection.execute(role_query,(username,)).fetchone()
+            role_query = "SELECT role_name FROM Users WHERE username=%s"
+            role_result = self.connection.execute(role_query, (username,)).fetchone()
 
             if role_result is None:
-                raise Exception("username not found")
-            
-            role=role_result[0]
+                raise Exception("Username not found")
 
+            role = role_result['role_name']
 
-            if role not in ["editor","theone"]:
-                raise PermissionError("You Do Not Have The Propper Credentials to Execute This Command")
+            if role not in ["editor", "theone"]:
+                raise PermissionError("You do not have permission to add athletes.")
+
+            # Insert athlete into database
             query = """
-                    INSERT INTO Athletes(name,height,gender)
-                    VALUES (%s,%s,%s)
-                    """
-            
-            self.connection.execute(query,(name,height,gender))
+                INSERT INTO Athletes (name, height, gender)
+                VALUES (%s, %s, %s)
+            """
+            self.connection.execute(query, (name, height, gender))
             self.connection.commit()
         except Exception as e:
             print(e)
@@ -277,14 +303,16 @@ class DatabaseAPI:
             ID of the newly inserted row
         """
         # TODO: Task 2 (SQL Function)
-        try:
-            query = """
+        query = """
                 SELECT Insert_athlete(%s, %s, %s, %s)
-            """
-            self.connection.execute(query, (username, name, height, gender))
+                """
+        try:
+            result = self.connection.execute(query, (username, name, height, gender)).fetchone()
             self.connection.commit()
+            return result[0]
+    
         except Exception as e:
-            print("Backend error:", e)
+            print(e)
             raise e
  
 
@@ -365,12 +393,35 @@ class DatabaseAPI:
         """
         # TODO: Task 3: Add competition using an SQL Function
         query = """
+                INSERT INTO Competitions (place, held)
+                VALUES (%s, %s)
+                RETURNING id
                 """
         try:
-            raise NotImplementedError
+            # Check user role
+            role_query = "SELECT role_name FROM Users WHERE username=%s"
+            role_result = self.connection.execute(role_query, (username,)).fetchone()
+
+            if role_result is None:
+                raise Exception("Username not found")
+
+            role = role_result['role_name']
+
+            if role not in ["editor", "theone"]:
+                raise PermissionError("You do not have permission to add competitions.")
+
+            # Validating date if it is later than 2024
+            competition_year = int(held.split("-")[0])
+            if competition_year < 2024:
+                raise ValueError("Competitions cannot be held before 2024.")
+
+            result = self.connection.execute(query, (place, held)).fetchone()
+            self.connection.commit()
+            return result['id']
         except Exception as e:
             print(e)
             raise e 
+
 
     def retrieve_all_results(self) -> list[dict_row]:
         """
@@ -423,7 +474,12 @@ class DatabaseAPI:
             },...]
         """
         try:
+            # TODO: Task 1
+            # TODO: Remember to account for pages or if there is a sort order on a column.
 
+            # NOTE (Hint): Dynamically construct the query string with the correct number of %s placeholders (", ".join(["%s"] * len(array))
+
+            # TODO: We do also want to get results if only places or only sports have been specified.
             query="""
             SELECT c.place,c.held,s.name AS sport, a.id AS athleteid, a.name,r.result
             FROM Results R
@@ -458,18 +514,7 @@ class DatabaseAPI:
             end=start + items_per_page
             paginated_rows=rows[start:end]
             return (paginated_rows, len(rows))
-        except Exception as e:
-            print(e)
-            raise e
-
-            # TODO: Task 1
-            # TODO: Remember to account for pages or if there is a sort order on a column.
-
-            # NOTE (Hint): Dynamically construct the query string with the correct number of %s placeholders (", ".join(["%s"] * len(array))
-
-            # TODO: We do also want to get results if only places or only sports have been specified.
-            
-            raise NotImplementedError
+    
         except Exception as e:
             print(e)
             raise e
@@ -490,77 +535,3 @@ class DatabaseAPI:
         except Exception as e:
             print(e)
             raise e
-    
-    def delete_sport(self, username: str, sport: str) -> None:
-    """
-    Delete a given sport from the Sports table.
-
-    Parameters
-    ----------
-    username: str
-        The user attempting to delete a sport row.
-    sport: str
-        The name of the sport to be deleted.
-    """
-    try:
-        # Check if the user exists and their role
-        role_query = "SELECT role_name FROM Users WHERE username=%s"
-        role_result = self.connection.execute(role_query, (username,)).fetchone()
-
-        if role_result is None:
-            raise Exception("Username not found")
-        
-        role = role_result['role_name']
-
-        # Check if user has the correct role
-        if role not in ["editor", "theone"]:
-            raise PermissionError("You do not have permission to delete a sport.")
-
-        # Perform the deletion
-        delete_query = "DELETE FROM Sports WHERE name=%s"
-        self.connection.execute(delete_query, (sport,))
-        self.connection.commit()
-    except Exception as e:
-        print("Error deleting sport:", e)
-        raise e
-
-    def add_competition(self, username: str, place: str, held: str | None = None) -> int:
-    """
-    Add a new competition to the Competitions table.
-
-    Parameters
-    ----------
-    username: str
-    place: str
-        Name of the place where the competition is held.
-    held: str | None
-        Date when the competition is held (Format: YYYY-MM-DD).
-
-    Returns
-    -------
-    int:
-        ID of the newly inserted row.
-    """
-    try:
-        # Check if the user exists and retrieve their role
-        role_query = "SELECT role_name FROM Users WHERE username=%s"
-        role_result = self.connection.execute(role_query, (username,)).fetchone()
-
-        if role_result is None:
-            raise Exception("Username not found")
-
-        role = role_result['role_name']
-
-        # Check user role
-        if role not in ["editor", "theone"]:
-            raise PermissionError("You do not have permission to add a competition.")
-
-        # Call the SQL function to insert a competition
-        query = "SELECT InsertCompetition(%s, %s)"
-        competition_id = self.connection.execute(query, (place, held)).fetchone()['insertcompetition']
-
-        self.connection.commit()
-        return competition_id
-    except Exception as e:
-        print("Error adding competition:", e)
-        raise e
