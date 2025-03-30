@@ -490,3 +490,77 @@ class DatabaseAPI:
         except Exception as e:
             print(e)
             raise e
+    
+    def delete_sport(self, username: str, sport: str) -> None:
+    """
+    Delete a given sport from the Sports table.
+
+    Parameters
+    ----------
+    username: str
+        The user attempting to delete a sport row.
+    sport: str
+        The name of the sport to be deleted.
+    """
+    try:
+        # Check if the user exists and their role
+        role_query = "SELECT role_name FROM Users WHERE username=%s"
+        role_result = self.connection.execute(role_query, (username,)).fetchone()
+
+        if role_result is None:
+            raise Exception("Username not found")
+        
+        role = role_result['role_name']
+
+        # Check if user has the correct role
+        if role not in ["editor", "theone"]:
+            raise PermissionError("You do not have permission to delete a sport.")
+
+        # Perform the deletion
+        delete_query = "DELETE FROM Sports WHERE name=%s"
+        self.connection.execute(delete_query, (sport,))
+        self.connection.commit()
+    except Exception as e:
+        print("Error deleting sport:", e)
+        raise e
+
+    def add_competition(self, username: str, place: str, held: str | None = None) -> int:
+    """
+    Add a new competition to the Competitions table.
+
+    Parameters
+    ----------
+    username: str
+    place: str
+        Name of the place where the competition is held.
+    held: str | None
+        Date when the competition is held (Format: YYYY-MM-DD).
+
+    Returns
+    -------
+    int:
+        ID of the newly inserted row.
+    """
+    try:
+        # Check if the user exists and retrieve their role
+        role_query = "SELECT role_name FROM Users WHERE username=%s"
+        role_result = self.connection.execute(role_query, (username,)).fetchone()
+
+        if role_result is None:
+            raise Exception("Username not found")
+
+        role = role_result['role_name']
+
+        # Check user role
+        if role not in ["editor", "theone"]:
+            raise PermissionError("You do not have permission to add a competition.")
+
+        # Call the SQL function to insert a competition
+        query = "SELECT InsertCompetition(%s, %s)"
+        competition_id = self.connection.execute(query, (place, held)).fetchone()['insertcompetition']
+
+        self.connection.commit()
+        return competition_id
+    except Exception as e:
+        print("Error adding competition:", e)
+        raise e
