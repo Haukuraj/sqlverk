@@ -398,27 +398,30 @@ class DatabaseAPI:
                 RETURNING id
                 """
         try:
-            
+            # Check user role
             role_query = "SELECT role_name FROM Users WHERE username=%s"
             role_result = self.connection.execute(role_query, (username,)).fetchone()
 
-            # Checking if there is a username
             if role_result is None:
-                raise Exception("no username found")
+                raise Exception("Username not found")
+            
 
+            # Checking if the user has the permission to add competition
             role = role_result['role_name']
-
             if role not in ["editor", "theone"]:
-                raise PermissionError("You do not have permission to add competitions.")
+                raise PermissionError("you have no permission to add competitions.")
+            
 
             # Validating date if it is later than 2024
-            competition_year = int(held.split("-")[0])
+            competition_year = int(held.split("-")[0]) # Only taking the YYYY part of the date structure
             if competition_year < 2024:
                 raise ValueError("Competitions have to be held after 2024.")
 
             result = self.connection.execute(query, (place, held)).fetchone()
             self.connection.commit()
             return result['id']
+        
+
         except Exception as e:
             print(e)
             raise e 
@@ -607,7 +610,6 @@ class DatabaseAPI:
             print("Error creating role and user:", e)
 
         
-
 
     def retrieve_all_genders(self) -> list[dict_row]:
         """
