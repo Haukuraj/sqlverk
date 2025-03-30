@@ -398,27 +398,30 @@ class DatabaseAPI:
                 RETURNING id
                 """
         try:
-            
+            # Check user role
             role_query = "SELECT role_name FROM Users WHERE username=%s"
             role_result = self.connection.execute(role_query, (username,)).fetchone()
 
-            # Checking if there is a username
             if role_result is None:
-                raise Exception("no username found")
+                raise Exception("Username not found")
+            
 
+            # Checking if the user has the permission to add competition
             role = role_result['role_name']
-
             if role not in ["editor", "theone"]:
-                raise PermissionError("You do not have permission to add competitions.")
+                raise PermissionError("you have no permission to add competitions.")
+            
 
             # Validating date if it is later than 2024
-            competition_year = int(held.split("-")[0])
+            competition_year = int(held.split("-")[0]) # Only taking the YYYY part of the date structure
             if competition_year < 2024:
                 raise ValueError("Competitions have to be held after 2024.")
 
             result = self.connection.execute(query, (place, held)).fetchone()
             self.connection.commit()
             return result['id']
+        
+
         except Exception as e:
             print(e)
             raise e 
@@ -519,89 +522,6 @@ class DatabaseAPI:
         except Exception as e:
             print(e)
             raise e
-        #3.4
-    def delete_sport(conn, username, sport_name, force_delete=False):
-        """
-        Deletes a sport from the database. If force_delete is False, it ensures there are no dependencies.
-        Only users with the role of 'editor' or 'theone' can perform this action.
-        """
-        try:
-            with conn.cursor() as cur:
-                # Check if the user exists and retrieve their role
-                cur.execute("SELECT role_name FROM Users WHERE username = %s;", (username,))
-                role_result = cur.fetchone()
-                
-                if role_result is None:
-                    print("Username not found.")
-                    return
-                
-                role = role_result[0]
-                
-                # Check user role
-                if role not in ["editor", "theone"]:
-                    print("You do not have permission to delete a sport.")
-                    return
-                
-                # Check if the sport exists
-                cur.execute("SELECT id FROM sports WHERE name = %s;", (sport_name,))
-                sport = cur.fetchone()
-                if not sport:
-                    print("Sport not found.")
-                    return
-                
-                sport_id = sport[0]
-                
-                if not force_delete:
-                    # Check if the sport has dependencies
-                    cur.execute("""
-                        SELECT COUNT(*) FROM events WHERE sport_id = %s
-                        UNION ALL
-                        SELECT COUNT(*) FROM teams WHERE sport_id = %s
-                    """, (sport_id, sport_id))
-                    
-                    dependencies = sum(row[0] for row in cur.fetchall())
-                    if dependencies > 0:
-                        print("Cannot delete sport. It has associated records.")
-                        return
-                else:
-                    # Delete dependent rows first
-                    cur.execute("DELETE FROM events WHERE sport_id = %s;", (sport_id,))
-                    cur.execute("DELETE FROM teams WHERE sport_id = %s;", (sport_id,))
-                
-                # Delete the sport
-                cur.execute("DELETE FROM sports WHERE id = %s;", (sport_id,))
-                conn.commit()
-                print(f"Sport '{sport_name}' deleted successfully.")
-        except Exception as e:
-            conn.rollback()
-            print("Error deleting sport:", e)
-    #3.5
-    def create_role_and_user(conn, role_name, username, password):
-        """
-        Creates a new role with specific permissions and adds a user with that role.
-        """
-        try:
-            with conn.cursor() as cur:
-                # Create the new role
-                cur.execute(f"CREATE ROLE {role_name} WITH LOGIN;")
-                
-                # Grant permissions
-                cur.execute(f"GRANT INSERT ON Competitions TO {role_name};")
-                cur.execute(f"GRANT SELECT ON Athletes, Results TO {role_name};")
-                
-                # Hash the password
-                hashed_password = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-                
-                # Insert new user
-                cur.execute("INSERT INTO Users (username, password_hash, role_name) VALUES (%s, %s, %s);", (username, hashed_password, role_name))
-                
-                conn.commit()
-                print(f"Role '{role_name}' and user '{username}' created successfully.")
-        except Exception as e:
-            conn.rollback()
-            print("Error creating role and user:", e)
-
-        
 
 
     def retrieve_all_genders(self) -> list[dict_row]:
